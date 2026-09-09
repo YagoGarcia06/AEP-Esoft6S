@@ -1,0 +1,20 @@
+target/
+*.class
+*.log
+
+# IntelliJ: as configuracoes compartilhadas ficam em .run/, que e versionado.
+.idea/
+*.iml
+*.ipr
+*.iws
+
+.vscode/
+.settings/
+.classpath
+.project
+
+# Baixado automaticamente pelo mvnw na primeira execucao.
+.mvn/wrapper/maven-wrapper.jar
+
+.DS_Store
+Thumbs.db
