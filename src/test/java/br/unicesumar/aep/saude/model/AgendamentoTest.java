@@ -138,10 +138,95 @@ class AgendamentoTest {
         assertFalse(consulta.equals(consulta(SEGUNDA_9H)));
         assertFalse(consulta.equals("texto"));
         assertEquals(consulta.getId().hashCode(), consulta.hashCode());
-        assertTrue(consulta.toString().contains("AGENDADO"));
+        assertTrue(consulta.toString().contains("Agendado"));
         assertEquals("pac-1", consulta.getPacienteId());
         assertEquals("prof-1", consulta.getProfissionalId());
         assertEquals(SEGUNDA_9H, consulta.getDataHora());
         assertEquals(TipoAtendimento.CONSULTA, consulta.getTipo());
+    }
+
+    @Test
+    @DisplayName("confirma e depois conclui um atendimento")
+    void deveConfirmarEConcluir() {
+        Agendamento consulta = consulta(SEGUNDA_9H);
+        consulta.confirmar();
+        assertEquals(StatusAgendamento.CONFIRMADO, consulta.getStatus());
+        assertTrue(consulta.getStatus().isAtivo());
+
+        consulta.realizar();
+        assertEquals(StatusAgendamento.REALIZADO, consulta.getStatus());
+    }
+
+    @Test
+    @DisplayName("não confirma duas vezes nem confirma atendimento encerrado")
+    void deveBloquearConfirmacaoInvalida() {
+        Agendamento confirmada = consulta(SEGUNDA_9H);
+        confirmada.confirmar();
+        assertThrows(RegraNegocioException.class, confirmada::confirmar);
+
+        Agendamento cancelada = consulta(SEGUNDA_9H);
+        cancelada.cancelar();
+        assertThrows(RegraNegocioException.class, cancelada::confirmar);
+    }
+
+    @Test
+    @DisplayName("registra falta e trata a falta como status final")
+    void deveRegistrarFalta() {
+        Agendamento consulta = consulta(SEGUNDA_9H);
+        consulta.confirmar();
+        consulta.registrarFalta();
+
+        assertEquals(StatusAgendamento.NAO_COMPARECEU, consulta.getStatus());
+        assertFalse(consulta.getStatus().isAtivo());
+        assertThrows(RegraNegocioException.class, consulta::realizar);
+        assertThrows(RegraNegocioException.class, consulta::cancelar);
+    }
+
+    @Test
+    @DisplayName("atendimento com falta não ocupa mais o horário")
+    void faltaNaoGeraConflito() {
+        Agendamento faltou = consulta(SEGUNDA_9H);
+        faltou.registrarFalta();
+        assertFalse(consulta(SEGUNDA_9H).conflitaCom(faltou));
+    }
+
+    @Test
+    @DisplayName("remarca um atendimento confirmado e volta para AGENDADO")
+    void deveRemarcar() {
+        Agendamento consulta = consulta(SEGUNDA_9H);
+        consulta.confirmar();
+
+        consulta.remarcarPara(SEGUNDA_9H.plusDays(7));
+
+        assertEquals(SEGUNDA_9H.plusDays(7), consulta.getDataHora());
+        assertEquals(LocalDate.of(2026, 3, 16), consulta.getData());
+        assertEquals(StatusAgendamento.AGENDADO, consulta.getStatus());
+    }
+
+    @Test
+    @DisplayName("bloqueia remarcação inválida")
+    void deveBloquearRemarcacaoInvalida() {
+        Agendamento consulta = consulta(SEGUNDA_9H);
+        assertThrows(NullPointerException.class, () -> consulta.remarcarPara(null));
+        assertThrows(RegraNegocioException.class, () -> consulta.remarcarPara(SEGUNDA_9H));
+
+        consulta.realizar();
+        assertThrows(RegraNegocioException.class, () -> consulta.remarcarPara(SEGUNDA_9H.plusDays(1)));
+        assertEquals(SEGUNDA_9H, consulta.getDataHora());
+    }
+
+    @Test
+    @DisplayName("descreve todas as transições do ciclo de vida")
+    void deveDescreverCicloCompleto() {
+        assertTrue(StatusAgendamento.AGENDADO.permiteTransicaoPara(StatusAgendamento.CONFIRMADO));
+        assertTrue(StatusAgendamento.AGENDADO.permiteTransicaoPara(StatusAgendamento.NAO_COMPARECEU));
+        assertTrue(StatusAgendamento.CONFIRMADO.permiteTransicaoPara(StatusAgendamento.REALIZADO));
+        assertTrue(StatusAgendamento.CONFIRMADO.permiteTransicaoPara(StatusAgendamento.CANCELADO));
+        assertFalse(StatusAgendamento.CONFIRMADO.permiteTransicaoPara(StatusAgendamento.AGENDADO));
+        assertFalse(StatusAgendamento.CONFIRMADO.permiteTransicaoPara(StatusAgendamento.CONFIRMADO));
+        assertFalse(StatusAgendamento.NAO_COMPARECEU.permiteTransicaoPara(StatusAgendamento.CANCELADO));
+        assertFalse(StatusAgendamento.REALIZADO.permiteTransicaoPara(StatusAgendamento.NAO_COMPARECEU));
+        assertEquals("Não compareceu", StatusAgendamento.NAO_COMPARECEU.getDescricao());
+        assertEquals("Confirmado", StatusAgendamento.CONFIRMADO.toString());
     }
 }

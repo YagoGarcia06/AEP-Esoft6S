@@ -81,10 +81,11 @@ public final class DemoConsole {
             System.out.println("    Bloqueado: " + e.getMessage());
         }
 
+        agendamentoService.confirmar(consulta.getId());
         agendamentoService.realizar(consulta.getId(),
                 "Consulta de rotina em cardiologia. Paciente estavel.",
                 List.of("Losartana 50mg - 1x ao dia"));
-        System.out.println("\n[6] Atendimento concluido. Status: "
+        System.out.println("\n[6] Presenca confirmada e atendimento concluido. Status: "
                 + agendamentoService.buscarPorId(consulta.getId()).getStatus());
 
         System.out.println("\n[7] Historico clinico de " + maria.getNome() + ":");
