@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Testes e cobertura (Java 17 + MongoDB 7)
+    runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      MONGODB_URI_TESTES: mongodb://localhost:27017
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Configurar o JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Testes + regra de cobertura mínima de 70% (mvn verify)
+        run: ./mvnw -B clean verify
+
+      - name: Garantir que os testes de integração rodaram contra o MongoDB
+        run: |
+          if ls target/surefire-reports/*Integracao*.txt >/dev/null 2>&1; then
+            if grep -h "Tests run: 0," target/surefire-reports/*Integracao*.txt; then
+              echo "::error::Testes de integração foram ignorados: o MongoDB do CI não respondeu."
+              exit 1
+            fi
+          fi
+
+      - name: Resumo de testes e cobertura
+        if: always()
+        run: |
+          {
+            echo "## Resultado"
+            echo
+            if ls target/surefire-reports/*.txt >/dev/null 2>&1; then
+              cat target/surefire-reports/*.txt | grep "Tests run" | awk -F'[ ,]+' \
+                '{t+=$3; f+=$5; e+=$7; s+=$9} END {printf "| Testes | Falhas | Erros | Ignorados |\n|---|---|---|---|\n| %d | %d | %d | %d |\n\n", t, f, e, s}'
+            fi
+            if [ -f target/site/jacoco/jacoco.csv ]; then
+              awk -F, 'NR>1 {lm+=$8; lc+=$9; bm+=$6; bc+=$7} END {printf "| Cobertura de linhas | Cobertura de branches |\n|---|---|\n| %.1f%% | %.1f%% |\n", lc*100/(lm+lc), bc*100/(bm+bc)}' \
+                target/site/jacoco/jacoco.csv
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar o relatório de cobertura (JaCoCo)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-cobertura-jacoco
+          path: target/site/jacoco/
+          if-no-files-found: ignore
+
+      - name: Publicar os relatórios de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-de-teste
+          path: target/surefire-reports/
+          if-no-files-found: ignore
