@@ -149,9 +149,30 @@ Os pacotes `app` e `ui` são excluídos da medição por serem apenas camadas de
 apresentação, sem regra de negócio. As exclusões estão declaradas no `pom.xml`.
 
 Os mapeadores `Document ↔ objeto` são cobertos por testes de ida e volta, que é onde
-moram os erros de mapeamento. Os repositórios `repository/mongo` não têm teste
-automatizado nesta entrega: são casca fina sobre o driver, e testá-los exige um MongoDB
-real ou embarcado.
+moram os erros de mapeamento.
+
+### Testes de integração com MongoDB
+
+Os repositórios `repository/mongo`, os pipelines de agregação dos relatórios e o fluxo
+completo da PoC são testados contra um **MongoDB real**, no pacote `integracao`. Cada
+classe usa um banco descartável com nome aleatório e apaga tudo ao final, sem tocar no
+banco da aplicação. Os relatórios são comparados com a implementação em memória,
+alimentada com os mesmos dados.
+
+```bash
+# subir um MongoDB local
+docker run -d --name mongo-poc -p 27017:27017 mongo:7
+
+# rodar todos os testes, inclusive os de integração
+./mvnw clean verify
+```
+
+Por padrão os testes procuram o MongoDB em `localhost:27017`. Para usar outro servidor,
+defina `MONGODB_URI_TESTES` (variável de ambiente) ou `-Dmongodb.uri.testes=...`.
+
+**Sem MongoDB acessível, os testes de integração são ignorados** e o `verify` continua
+passando com os testes de unidade (cobertura acima de 70% nos dois casos). Para rodar
+só os de integração: `./mvnw test -Dgroups=integracao`.
 
 ## Modelagem NoSQL
 
