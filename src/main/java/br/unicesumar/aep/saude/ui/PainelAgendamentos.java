@@ -1,6 +1,7 @@
 package br.unicesumar.aep.saude.ui;
 
 import br.unicesumar.aep.saude.model.Agendamento;
+import br.unicesumar.aep.saude.model.AlteracaoAgendamento;
 import br.unicesumar.aep.saude.model.Paciente;
 import br.unicesumar.aep.saude.model.Profissional;
 import br.unicesumar.aep.saude.model.TipoAtendimento;
@@ -100,8 +101,10 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
                 agendamentoService::registrarFalta, "Falta registrada."));
 
         JButton cancelar = new JButton("Cancelar");
-        cancelar.addActionListener(e -> executarNoSelecionado(
-                agendamentoService::cancelar, "Atendimento cancelado."));
+        cancelar.addActionListener(e -> cancelar());
+
+        JButton alteracoes = new JButton("Ver alterações");
+        alteracoes.addActionListener(e -> mostrarAlteracoes());
 
         JPanel rodape = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         rodape.add(confirmar);
@@ -109,6 +112,7 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
         rodape.add(concluir);
         rodape.add(falta);
         rodape.add(cancelar);
+        rodape.add(alteracoes);
         painel.add(rodape, BorderLayout.SOUTH);
         return painel;
     }
@@ -182,6 +186,54 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
         } catch (RuntimeException e) {
             Mensagens.erro(this, e);
         }
+    }
+
+    private void cancelar() {
+        String id = tabela.idSelecionado();
+        if (id == null) {
+            Mensagens.aviso(this, "Selecione um atendimento na agenda.");
+            return;
+        }
+        String motivo = JOptionPane.showInputDialog(this,
+                "Motivo do cancelamento:", "Cancelar atendimento", JOptionPane.QUESTION_MESSAGE);
+        if (motivo == null) {
+            return;
+        }
+        try {
+            agendamentoService.cancelar(id, motivo);
+            atualizar();
+            Mensagens.sucesso(this, "Atendimento cancelado.");
+        } catch (RuntimeException e) {
+            Mensagens.erro(this, e);
+        }
+    }
+
+    /** Mostra a trilha de mudanças do atendimento selecionado. */
+    private void mostrarAlteracoes() {
+        String id = tabela.idSelecionado();
+        if (id == null) {
+            Mensagens.aviso(this, "Selecione um atendimento na agenda.");
+            return;
+        }
+        List<AlteracaoAgendamento> alteracoes = agendamentoService.buscarPorId(id).getAlteracoes();
+        if (alteracoes.isEmpty()) {
+            Mensagens.aviso(this, "Este atendimento ainda não teve alterações.");
+            return;
+        }
+        TabelaSimples tabelaAlteracoes = new TabelaSimples("Quando", "De", "Para", "Observação");
+        tabelaAlteracoes.definirLarguras(120, 100, 100, 260);
+        for (int i = 0; i < alteracoes.size(); i++) {
+            AlteracaoAgendamento alteracao = alteracoes.get(i);
+            tabelaAlteracoes.adicionarLinha(String.valueOf(i),
+                    alteracao.getMomento().format(Formatos.DATA_HORA),
+                    alteracao.getStatusAnterior(),
+                    alteracao.getStatusNovo(),
+                    alteracao.getObservacao() == null ? "" : alteracao.getObservacao());
+        }
+        JScrollPane rolagem = new JScrollPane(tabelaAlteracoes);
+        rolagem.setPreferredSize(new java.awt.Dimension(600, 180));
+        JOptionPane.showMessageDialog(this, rolagem, "Alterações do atendimento",
+                JOptionPane.PLAIN_MESSAGE);
     }
 
     private void remarcar() {

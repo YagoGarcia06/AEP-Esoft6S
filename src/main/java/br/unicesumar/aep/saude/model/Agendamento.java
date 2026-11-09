@@ -4,13 +4,18 @@ import br.unicesumar.aep.saude.exception.RegraNegocioException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
 /**
  * Agendamento de consulta ou exame. É a entidade raiz da coleção
  * "agendamentos" e se relaciona com "pacientes" e "profissionais" por
- * referência de id.
+ * referência de id. Cada mudança de status fica registrada na lista de
+ * subdocumentos "alteracoes".
  */
 public class Agendamento {
 
@@ -21,6 +26,9 @@ public class Agendamento {
     private final int duracaoMinutos;
     private final TipoAtendimento tipo;
     private StatusAgendamento status;
+    private final List<AlteracaoAgendamento> alteracoes;
+
+    private static final DateTimeFormatter FORMATO_DATA_HORA = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
     public Agendamento(String pacienteId, String profissionalId,
                        LocalDateTime dataHora, TipoAtendimento tipo) {
@@ -30,6 +38,12 @@ public class Agendamento {
 
     public Agendamento(String id, String pacienteId, String profissionalId, LocalDateTime dataHora,
                        int duracaoMinutos, TipoAtendimento tipo, StatusAgendamento status) {
+        this(id, pacienteId, profissionalId, dataHora, duracaoMinutos, tipo, status, List.of());
+    }
+
+    public Agendamento(String id, String pacienteId, String profissionalId, LocalDateTime dataHora,
+                       int duracaoMinutos, TipoAtendimento tipo, StatusAgendamento status,
+                       List<AlteracaoAgendamento> alteracoes) {
         if (pacienteId == null || pacienteId.isBlank()) {
             throw new IllegalArgumentException("Id do paciente é obrigatório.");
         }
@@ -46,6 +60,7 @@ public class Agendamento {
         this.profissionalId = profissionalId;
         this.duracaoMinutos = duracaoMinutos;
         this.status = Objects.requireNonNull(status, "Status é obrigatório.");
+        this.alteracoes = new ArrayList<>(alteracoes == null ? List.of() : alteracoes);
     }
 
     public LocalDateTime getFim() {
@@ -73,20 +88,24 @@ public class Agendamento {
         return dataHora.isBefore(outro.getFim()) && outro.dataHora.isBefore(getFim());
     }
 
-    public void confirmar() {
-        transitarPara(StatusAgendamento.CONFIRMADO);
+    public void confirmar(LocalDateTime momento) {
+        transitarPara(StatusAgendamento.CONFIRMADO, momento, null);
     }
 
-    public void realizar() {
-        transitarPara(StatusAgendamento.REALIZADO);
+    public void realizar(LocalDateTime momento) {
+        transitarPara(StatusAgendamento.REALIZADO, momento, null);
     }
 
-    public void registrarFalta() {
-        transitarPara(StatusAgendamento.NAO_COMPARECEU);
+    public void registrarFalta(LocalDateTime momento) {
+        transitarPara(StatusAgendamento.NAO_COMPARECEU, momento, null);
     }
 
-    public void cancelar() {
-        transitarPara(StatusAgendamento.CANCELADO);
+    /** Cancela o atendimento; o motivo é obrigatório e fica no histórico. */
+    public void cancelar(LocalDateTime momento, String motivo) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new RegraNegocioException("Informe o motivo do cancelamento.");
+        }
+        transitarPara(StatusAgendamento.CANCELADO, momento, "Motivo: " + motivo.trim());
     }
 
     /**
@@ -94,10 +113,12 @@ public class Agendamento {
      * um atendimento já confirmado volta para AGENDADO, pois a nova data
      * precisa ser confirmada de novo com o paciente.
      */
-    public void remarcarPara(LocalDateTime novaDataHora) {
+    public void remarcarPara(LocalDateTime novaDataHora, LocalDateTime momento) {
         verificarRemarcacao(novaDataHora);
+        String observacao = "Remarcado de " + dataHora.format(FORMATO_DATA_HORA)
+                + " para " + novaDataHora.format(FORMATO_DATA_HORA);
+        registrar(momento, StatusAgendamento.AGENDADO, observacao);
         this.dataHora = novaDataHora;
-        this.status = StatusAgendamento.AGENDADO;
     }
 
     /** Lança exceção se o agendamento não puder ir para a nova data e hora. */
@@ -112,12 +133,22 @@ public class Agendamento {
         }
     }
 
-    private void transitarPara(StatusAgendamento novoStatus) {
+    private void transitarPara(StatusAgendamento novoStatus, LocalDateTime momento, String observacao) {
         if (!status.permiteTransicaoPara(novoStatus)) {
             throw new RegraNegocioException(
                     "Não é possível mudar o agendamento de " + status + " para " + novoStatus + ".");
         }
+        registrar(momento, novoStatus, observacao);
+    }
+
+    private void registrar(LocalDateTime momento, StatusAgendamento novoStatus, String observacao) {
+        alteracoes.add(new AlteracaoAgendamento(momento, status, novoStatus, observacao));
         this.status = novoStatus;
+    }
+
+    /** Histórico de mudanças, da mais antiga para a mais recente. */
+    public List<AlteracaoAgendamento> getAlteracoes() {
+        return Collections.unmodifiableList(alteracoes);
     }
 
     public String getId() {

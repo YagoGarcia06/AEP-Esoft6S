@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AgendamentoTest {
 
     private static final LocalDateTime SEGUNDA_9H = LocalDateTime.of(2026, 3, 9, 9, 0);
+    private static final LocalDateTime MOMENTO = LocalDateTime.of(2026, 3, 2, 10, 0);
 
     private Agendamento consulta(LocalDateTime dataHora) {
         return new Agendamento("pac-1", "prof-1", dataHora, TipoAtendimento.CONSULTA);
@@ -82,7 +83,7 @@ class AgendamentoTest {
     void naoDeveConflitarComInativoOuConsigoMesmo() {
         Agendamento existente = consulta(SEGUNDA_9H);
         Agendamento novo = consulta(SEGUNDA_9H.plusMinutes(10));
-        existente.cancelar();
+        existente.cancelar(MOMENTO, "Paciente desistiu");
 
         assertFalse(novo.conflitaCom(existente));
         assertFalse(novo.conflitaCom(novo));
@@ -93,7 +94,7 @@ class AgendamentoTest {
     @DisplayName("conclui um atendimento agendado")
     void deveRealizar() {
         Agendamento consulta = consulta(SEGUNDA_9H);
-        consulta.realizar();
+        consulta.realizar(MOMENTO);
         assertEquals(StatusAgendamento.REALIZADO, consulta.getStatus());
     }
 
@@ -101,7 +102,7 @@ class AgendamentoTest {
     @DisplayName("cancela um atendimento agendado")
     void deveCancelar() {
         Agendamento consulta = consulta(SEGUNDA_9H);
-        consulta.cancelar();
+        consulta.cancelar(MOMENTO, "Paciente desistiu");
         assertEquals(StatusAgendamento.CANCELADO, consulta.getStatus());
     }
 
@@ -109,13 +110,13 @@ class AgendamentoTest {
     @DisplayName("bloqueia transições a partir de um status final")
     void deveBloquearTransicaoInvalida() {
         Agendamento realizada = consulta(SEGUNDA_9H);
-        realizada.realizar();
-        assertThrows(RegraNegocioException.class, realizada::cancelar);
-        assertThrows(RegraNegocioException.class, realizada::realizar);
+        realizada.realizar(MOMENTO);
+        assertThrows(RegraNegocioException.class, () -> realizada.cancelar(MOMENTO, "Paciente desistiu"));
+        assertThrows(RegraNegocioException.class, () -> realizada.realizar(MOMENTO));
 
         Agendamento cancelada = consulta(SEGUNDA_9H);
-        cancelada.cancelar();
-        assertThrows(RegraNegocioException.class, cancelada::realizar);
+        cancelada.cancelar(MOMENTO, "Paciente desistiu");
+        assertThrows(RegraNegocioException.class, () -> cancelada.realizar(MOMENTO));
     }
 
     @Test
@@ -149,11 +150,11 @@ class AgendamentoTest {
     @DisplayName("confirma e depois conclui um atendimento")
     void deveConfirmarEConcluir() {
         Agendamento consulta = consulta(SEGUNDA_9H);
-        consulta.confirmar();
+        consulta.confirmar(MOMENTO);
         assertEquals(StatusAgendamento.CONFIRMADO, consulta.getStatus());
         assertTrue(consulta.getStatus().isAtivo());
 
-        consulta.realizar();
+        consulta.realizar(MOMENTO);
         assertEquals(StatusAgendamento.REALIZADO, consulta.getStatus());
     }
 
@@ -161,32 +162,32 @@ class AgendamentoTest {
     @DisplayName("não confirma duas vezes nem confirma atendimento encerrado")
     void deveBloquearConfirmacaoInvalida() {
         Agendamento confirmada = consulta(SEGUNDA_9H);
-        confirmada.confirmar();
-        assertThrows(RegraNegocioException.class, confirmada::confirmar);
+        confirmada.confirmar(MOMENTO);
+        assertThrows(RegraNegocioException.class, () -> confirmada.confirmar(MOMENTO));
 
         Agendamento cancelada = consulta(SEGUNDA_9H);
-        cancelada.cancelar();
-        assertThrows(RegraNegocioException.class, cancelada::confirmar);
+        cancelada.cancelar(MOMENTO, "Paciente desistiu");
+        assertThrows(RegraNegocioException.class, () -> cancelada.confirmar(MOMENTO));
     }
 
     @Test
     @DisplayName("registra falta e trata a falta como status final")
     void deveRegistrarFalta() {
         Agendamento consulta = consulta(SEGUNDA_9H);
-        consulta.confirmar();
-        consulta.registrarFalta();
+        consulta.confirmar(MOMENTO);
+        consulta.registrarFalta(MOMENTO);
 
         assertEquals(StatusAgendamento.NAO_COMPARECEU, consulta.getStatus());
         assertFalse(consulta.getStatus().isAtivo());
-        assertThrows(RegraNegocioException.class, consulta::realizar);
-        assertThrows(RegraNegocioException.class, consulta::cancelar);
+        assertThrows(RegraNegocioException.class, () -> consulta.realizar(MOMENTO));
+        assertThrows(RegraNegocioException.class, () -> consulta.cancelar(MOMENTO, "Paciente desistiu"));
     }
 
     @Test
     @DisplayName("atendimento com falta não ocupa mais o horário")
     void faltaNaoGeraConflito() {
         Agendamento faltou = consulta(SEGUNDA_9H);
-        faltou.registrarFalta();
+        faltou.registrarFalta(MOMENTO);
         assertFalse(consulta(SEGUNDA_9H).conflitaCom(faltou));
     }
 
@@ -194,9 +195,9 @@ class AgendamentoTest {
     @DisplayName("remarca um atendimento confirmado e volta para AGENDADO")
     void deveRemarcar() {
         Agendamento consulta = consulta(SEGUNDA_9H);
-        consulta.confirmar();
+        consulta.confirmar(MOMENTO);
 
-        consulta.remarcarPara(SEGUNDA_9H.plusDays(7));
+        consulta.remarcarPara(SEGUNDA_9H.plusDays(7), MOMENTO);
 
         assertEquals(SEGUNDA_9H.plusDays(7), consulta.getDataHora());
         assertEquals(LocalDate.of(2026, 3, 16), consulta.getData());
@@ -207,11 +208,11 @@ class AgendamentoTest {
     @DisplayName("bloqueia remarcação inválida")
     void deveBloquearRemarcacaoInvalida() {
         Agendamento consulta = consulta(SEGUNDA_9H);
-        assertThrows(NullPointerException.class, () -> consulta.remarcarPara(null));
-        assertThrows(RegraNegocioException.class, () -> consulta.remarcarPara(SEGUNDA_9H));
+        assertThrows(NullPointerException.class, () -> consulta.remarcarPara(null, MOMENTO));
+        assertThrows(RegraNegocioException.class, () -> consulta.remarcarPara(SEGUNDA_9H, MOMENTO));
 
-        consulta.realizar();
-        assertThrows(RegraNegocioException.class, () -> consulta.remarcarPara(SEGUNDA_9H.plusDays(1)));
+        consulta.realizar(MOMENTO);
+        assertThrows(RegraNegocioException.class, () -> consulta.remarcarPara(SEGUNDA_9H.plusDays(1), MOMENTO));
         assertEquals(SEGUNDA_9H, consulta.getDataHora());
     }
 
@@ -228,5 +229,33 @@ class AgendamentoTest {
         assertFalse(StatusAgendamento.REALIZADO.permiteTransicaoPara(StatusAgendamento.NAO_COMPARECEU));
         assertEquals("Não compareceu", StatusAgendamento.NAO_COMPARECEU.getDescricao());
         assertEquals("Confirmado", StatusAgendamento.CONFIRMADO.toString());
+    }
+
+    @Test
+    @DisplayName("não registra alteração quando a transição é recusada")
+    void naoDeveRegistrarTransicaoRecusada() {
+        Agendamento consulta = consulta(SEGUNDA_9H);
+        consulta.realizar(MOMENTO);
+
+        assertThrows(RegraNegocioException.class, () -> consulta.confirmar(MOMENTO));
+        assertEquals(1, consulta.getAlteracoes().size());
+        assertThrows(UnsupportedOperationException.class,
+                () -> consulta.getAlteracoes().clear());
+    }
+
+    @Test
+    @DisplayName("descreve a alteração de forma legível")
+    void deveDescreverAlteracao() {
+        AlteracaoAgendamento semObservacao = new AlteracaoAgendamento(
+                MOMENTO, StatusAgendamento.AGENDADO, StatusAgendamento.CONFIRMADO, "  ");
+        AlteracaoAgendamento comObservacao = new AlteracaoAgendamento(
+                MOMENTO, StatusAgendamento.AGENDADO, StatusAgendamento.CANCELADO, " Motivo: chuva ");
+
+        assertEquals(null, semObservacao.getObservacao());
+        assertEquals("Motivo: chuva", comObservacao.getObservacao());
+        assertEquals("2026-03-02T10:00: Agendado -> Confirmado", semObservacao.toString());
+        assertTrue(comObservacao.toString().endsWith("(Motivo: chuva)"));
+        assertThrows(NullPointerException.class, () -> new AlteracaoAgendamento(
+                null, StatusAgendamento.AGENDADO, StatusAgendamento.CANCELADO, null));
     }
 }
