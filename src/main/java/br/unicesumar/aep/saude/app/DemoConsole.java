@@ -12,8 +12,10 @@ import br.unicesumar.aep.saude.model.TipoAtendimento;
 import br.unicesumar.aep.saude.repository.memory.InMemoryAgendamentoRepository;
 import br.unicesumar.aep.saude.repository.memory.InMemoryPacienteRepository;
 import br.unicesumar.aep.saude.repository.memory.InMemoryProfissionalRepository;
+import br.unicesumar.aep.saude.repository.memory.InMemoryRelatorioRepository;
 import br.unicesumar.aep.saude.service.AgendamentoService;
 import br.unicesumar.aep.saude.service.PacienteService;
+import br.unicesumar.aep.saude.service.RelatorioService;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -101,6 +103,16 @@ public final class DemoConsole {
         System.out.println("\n[8] Agenda do profissional em " + segunda9h.toLocalDate() + ":");
         agendamentoService.agendaDoProfissional(carlos.getId(), segunda9h.toLocalDate())
                 .forEach(a -> System.out.println("    - " + a));
+
+        RelatorioService relatorioService = new RelatorioService(
+                new InMemoryRelatorioRepository(agendamentos, pacientes, profissionais));
+        System.out.println("\n[9] Relatorio: agenda do dia " + segunda9h.toLocalDate() + ":");
+        relatorioService.agendaDoDia(segunda9h.toLocalDate())
+                .forEach(item -> System.out.println("    - " + item));
+        System.out.println("\n[10] Relatorio: resumo por profissional no mes:");
+        relatorioService.resumoPorProfissional(segunda9h.toLocalDate().withDayOfMonth(1),
+                        segunda9h.toLocalDate().withDayOfMonth(segunda9h.toLocalDate().lengthOfMonth()))
+                .forEach(resumo -> System.out.println("    - " + resumo));
     }
 
     private static LocalDateTime proximaSegundaAs(LocalTime hora) {
