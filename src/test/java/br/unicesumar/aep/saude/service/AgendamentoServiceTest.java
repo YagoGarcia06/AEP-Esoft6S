@@ -229,4 +229,116 @@ class AgendamentoServiceTest {
         assertThrows(NullPointerException.class,
                 () -> new AgendamentoService(agendamentos, pacientes, null));
     }
+
+    private Agendamento agendarConsulta(LocalDateTime dataHora) {
+        return service.agendar(maria.getId(), carlos.getId(), dataHora, TipoAtendimento.CONSULTA);
+    }
+
+    /** Serviço sobre os mesmos repositórios, com o relógio em outro instante. */
+    private AgendamentoService servicoEm(LocalDateTime instante) {
+        Clock relogio = Clock.fixed(instante.atZone(ZONA).toInstant(), ZONA);
+        return new AgendamentoService(agendamentos, pacientes, profissionais, relogio);
+    }
+
+    @Test
+    @DisplayName("confirma a presença e persiste o novo status")
+    void deveConfirmar() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+
+        service.confirmar(consulta.getId());
+
+        assertEquals(StatusAgendamento.CONFIRMADO, service.buscarPorId(consulta.getId()).getStatus());
+        assertThrows(RegraNegocioException.class, () -> service.confirmar(consulta.getId()));
+        assertThrows(RecursoNaoEncontradoException.class, () -> service.confirmar("inexistente"));
+    }
+
+    @Test
+    @DisplayName("um atendimento confirmado continua bloqueando o horário")
+    void confirmadoContinuaOcupandoHorario() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        service.confirmar(consulta.getId());
+
+        assertThrows(RegraNegocioException.class,
+                () -> agendarConsulta(PROXIMA_SEGUNDA_9H.plusMinutes(15)));
+    }
+
+    @Test
+    @DisplayName("remarca para um horário livre e libera o horário antigo")
+    void deveRemarcar() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        service.confirmar(consulta.getId());
+
+        LocalDateTime novoHorario = PROXIMA_SEGUNDA_9H.plusDays(7).plusHours(1);
+        service.remarcar(consulta.getId(), novoHorario);
+
+        Agendamento remarcado = service.buscarPorId(consulta.getId());
+        assertEquals(novoHorario, remarcado.getDataHora());
+        assertEquals(StatusAgendamento.AGENDADO, remarcado.getStatus());
+        assertEquals(1, service.agendaDoProfissional(carlos.getId(), novoHorario.toLocalDate()).size());
+
+        agendarConsulta(PROXIMA_SEGUNDA_9H);
+        assertEquals(2, agendamentos.contar());
+    }
+
+    @Test
+    @DisplayName("permite remarcar para um horário que se sobrepõe ao próprio horário antigo")
+    void deveRemarcarSobreOProprioHorario() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+
+        service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.plusMinutes(15));
+
+        assertEquals(PROXIMA_SEGUNDA_9H.plusMinutes(15), service.buscarPorId(consulta.getId()).getDataHora());
+    }
+
+    @Test
+    @DisplayName("aplica na remarcação as mesmas regras do agendamento")
+    void deveValidarRemarcacao() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        agendarConsulta(PROXIMA_SEGUNDA_9H.plusHours(1));
+
+        assertThrows(RegraNegocioException.class,
+                () -> service.remarcar(consulta.getId(), AGORA.minusDays(1)));
+        assertThrows(RegraNegocioException.class,
+                () -> service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.withHour(14)));
+        assertThrows(RegraNegocioException.class,
+                () -> service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.plusMinutes(50)));
+        assertThrows(RecursoNaoEncontradoException.class,
+                () -> service.remarcar("inexistente", PROXIMA_SEGUNDA_9H));
+
+        assertEquals(PROXIMA_SEGUNDA_9H, service.buscarPorId(consulta.getId()).getDataHora());
+    }
+
+    @Test
+    @DisplayName("não remarca atendimento já encerrado")
+    void naoDeveRemarcarEncerrado() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        service.cancelar(consulta.getId());
+
+        assertThrows(RegraNegocioException.class,
+                () -> service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.plusDays(7)));
+    }
+
+    @Test
+    @DisplayName("falha ao remarcar quando o profissional foi removido")
+    void deveFalharRemarcacaoSemProfissional() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        profissionais.remover(carlos.getId());
+
+        assertThrows(RecursoNaoEncontradoException.class,
+                () -> service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.plusDays(7)));
+    }
+
+    @Test
+    @DisplayName("registra falta somente depois do horário do atendimento")
+    void deveRegistrarFaltaAposOHorario() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+
+        assertThrows(RegraNegocioException.class, () -> service.registrarFalta(consulta.getId()));
+
+        servicoEm(PROXIMA_SEGUNDA_9H.plusMinutes(40)).registrarFalta(consulta.getId());
+
+        assertEquals(StatusAgendamento.NAO_COMPARECEU, service.buscarPorId(consulta.getId()).getStatus());
+        assertTrue(service.agendaDoPaciente(maria.getId()).stream()
+                .noneMatch(a -> a.getStatus().isAtivo()));
+    }
 }

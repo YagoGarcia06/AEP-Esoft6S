@@ -68,8 +68,9 @@ public final class DadosExemplo {
                 "Consulta de rotina em cardiologia. Paciente estável.",
                 List.of("Losartana 50mg - 1x ao dia"));
 
-        agendamentoService.agendar(
+        Agendamento exame = agendamentoService.agendar(
                 joao.getId(), ana.getId(), terca10h, TipoAtendimento.EXAME);
+        agendamentoService.confirmar(exame.getId());
         agendamentoService.agendar(
                 maria.getId(), carlos.getId(), segunda9h.plusMinutes(30), TipoAtendimento.CONSULTA);
     }

@@ -17,7 +17,7 @@ public class Agendamento {
     private final String id;
     private final String pacienteId;
     private final String profissionalId;
-    private final LocalDateTime dataHora;
+    private LocalDateTime dataHora;
     private final int duracaoMinutos;
     private final TipoAtendimento tipo;
     private StatusAgendamento status;
@@ -73,12 +73,43 @@ public class Agendamento {
         return dataHora.isBefore(outro.getFim()) && outro.dataHora.isBefore(getFim());
     }
 
+    public void confirmar() {
+        transitarPara(StatusAgendamento.CONFIRMADO);
+    }
+
     public void realizar() {
         transitarPara(StatusAgendamento.REALIZADO);
     }
 
+    public void registrarFalta() {
+        transitarPara(StatusAgendamento.NAO_COMPARECEU);
+    }
+
     public void cancelar() {
         transitarPara(StatusAgendamento.CANCELADO);
+    }
+
+    /**
+     * Move o atendimento para outro horário. Só vale para agendamentos ativos;
+     * um atendimento já confirmado volta para AGENDADO, pois a nova data
+     * precisa ser confirmada de novo com o paciente.
+     */
+    public void remarcarPara(LocalDateTime novaDataHora) {
+        verificarRemarcacao(novaDataHora);
+        this.dataHora = novaDataHora;
+        this.status = StatusAgendamento.AGENDADO;
+    }
+
+    /** Lança exceção se o agendamento não puder ir para a nova data e hora. */
+    public void verificarRemarcacao(LocalDateTime novaDataHora) {
+        Objects.requireNonNull(novaDataHora, "Nova data e hora são obrigatórias.");
+        if (!status.isAtivo()) {
+            throw new RegraNegocioException(
+                    "Não é possível remarcar um agendamento com status " + status + ".");
+        }
+        if (novaDataHora.equals(dataHora)) {
+            throw new RegraNegocioException("A nova data e hora é igual à atual.");
+        }
     }
 
     private void transitarPara(StatusAgendamento novoStatus) {
