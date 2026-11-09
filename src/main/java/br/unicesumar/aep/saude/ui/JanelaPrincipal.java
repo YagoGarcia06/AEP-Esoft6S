@@ -4,6 +4,7 @@ import br.unicesumar.aep.saude.infra.ContextoAplicacao;
 import br.unicesumar.aep.saude.service.AgendamentoService;
 import br.unicesumar.aep.saude.service.PacienteService;
 import br.unicesumar.aep.saude.service.ProfissionalService;
+import br.unicesumar.aep.saude.service.RelatorioService;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -28,6 +29,7 @@ public class JanelaPrincipal extends JFrame {
     private final transient PacienteService pacienteService;
     private final transient ProfissionalService profissionalService;
     private final transient AgendamentoService agendamentoService;
+    private final transient RelatorioService relatorioService;
 
     private final JTabbedPane abas = new JTabbedPane();
     private final String descricaoArmazenamento;
@@ -36,6 +38,7 @@ public class JanelaPrincipal extends JFrame {
         this.pacienteService = contexto.getPacienteService();
         this.profissionalService = contexto.getProfissionalService();
         this.agendamentoService = contexto.getAgendamentoService();
+        this.relatorioService = contexto.getRelatorioService();
         this.descricaoArmazenamento = contexto.getDescricaoArmazenamento();
 
         setTitle("PoC — Agendamento em Saúde | AEP 2026.2 — 6S | ODS 3");
@@ -49,6 +52,7 @@ public class JanelaPrincipal extends JFrame {
         abas.addTab("Agendamentos",
                 new PainelAgendamentos(agendamentoService, pacienteService, profissionalService));
         abas.addTab("Histórico", new PainelHistorico(pacienteService, profissionalService));
+        abas.addTab("Relatórios", new PainelRelatorios(relatorioService));
 
         abas.addChangeListener(e -> atualizarAbaSelecionada());
 

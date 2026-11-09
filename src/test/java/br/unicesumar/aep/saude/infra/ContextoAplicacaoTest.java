@@ -22,6 +22,7 @@ class ContextoAplicacaoTest {
             assertNotNull(contexto.getPacienteService());
             assertNotNull(contexto.getProfissionalService());
             assertNotNull(contexto.getAgendamentoService());
+            assertNotNull(contexto.getRelatorioService());
             assertTrue(contexto.getDescricaoArmazenamento().contains("Memória"));
         }
     }
@@ -37,6 +38,7 @@ class ContextoAplicacaoTest {
 
             assertEquals(1, contexto.getPacienteService().listar().size());
             assertTrue(contexto.getAgendamentoService().agendaDoPaciente(maria.getId()).isEmpty());
+            assertTrue(contexto.getRelatorioService().agendaDoDia(LocalDate.of(2026, 3, 9)).isEmpty());
         }
     }
 
