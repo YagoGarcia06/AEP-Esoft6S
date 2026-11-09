@@ -76,7 +76,7 @@ public class AgendamentoService {
      * do profissional e ausência de conflito com outros atendimentos ativos.
      */
     private void validarHorario(Agendamento candidato, Profissional profissional) {
-        if (!candidato.getDataHora().isAfter(LocalDateTime.now(clock))) {
+        if (!candidato.getDataHora().isAfter(agora())) {
             throw new RegraNegocioException("Não é possível agendar em data/hora no passado.");
         }
 
@@ -104,7 +104,7 @@ public class AgendamentoService {
     /** Registra que o paciente confirmou presença. */
     public Agendamento confirmar(String agendamentoId) {
         Agendamento agendamento = buscarPorId(agendamentoId);
-        agendamento.confirmar();
+        agendamento.confirmar(agora());
         return agendamentoRepository.salvar(agendamento);
     }
 
@@ -125,7 +125,7 @@ public class AgendamentoService {
                 agendamento.getTipo(), StatusAgendamento.AGENDADO);
         validarHorario(candidato, profissional);
 
-        agendamento.remarcarPara(novaDataHora);
+        agendamento.remarcarPara(novaDataHora, agora());
         return agendamentoRepository.salvar(agendamento);
     }
 
@@ -134,17 +134,18 @@ public class AgendamentoService {
      */
     public Agendamento registrarFalta(String agendamentoId) {
         Agendamento agendamento = buscarPorId(agendamentoId);
-        if (agendamento.getDataHora().isAfter(LocalDateTime.now(clock))) {
+        if (agendamento.getDataHora().isAfter(agora())) {
             throw new RegraNegocioException(
                     "Só é possível registrar falta depois do horário do atendimento.");
         }
-        agendamento.registrarFalta();
+        agendamento.registrarFalta(agora());
         return agendamentoRepository.salvar(agendamento);
     }
 
-    public Agendamento cancelar(String agendamentoId) {
+    /** Cancela o atendimento, liberando o horário; o motivo fica no histórico. */
+    public Agendamento cancelar(String agendamentoId, String motivo) {
         Agendamento agendamento = buscarPorId(agendamentoId);
-        agendamento.cancelar();
+        agendamento.cancelar(agora(), motivo);
         return agendamentoRepository.salvar(agendamento);
     }
 
@@ -157,7 +158,7 @@ public class AgendamentoService {
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
                         "Paciente do agendamento não encontrado: " + agendamento.getPacienteId()));
 
-        agendamento.realizar();
+        agendamento.realizar(agora());
         paciente.adicionarRegistro(new RegistroClinico(
                 agendamento.getData(),
                 agendamento.getTipo(),
@@ -182,5 +183,9 @@ public class AgendamentoService {
         List<Agendamento> todos = new ArrayList<>(agendamentoRepository.listarTodos());
         todos.sort(Comparator.comparing(Agendamento::getDataHora));
         return todos;
+    }
+
+    private LocalDateTime agora() {
+        return LocalDateTime.now(clock).withNano(0);
     }
 }

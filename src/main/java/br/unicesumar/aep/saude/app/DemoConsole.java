@@ -88,6 +88,10 @@ public final class DemoConsole {
         System.out.println("\n[6] Presenca confirmada e atendimento concluido. Status: "
                 + agendamentoService.buscarPorId(consulta.getId()).getStatus());
 
+        System.out.println("    Alteracoes registradas no agendamento:");
+        agendamentoService.buscarPorId(consulta.getId()).getAlteracoes()
+                .forEach(a -> System.out.println("      - " + a));
+
         System.out.println("\n[7] Historico clinico de " + maria.getNome() + ":");
         for (RegistroClinico registro : pacienteService.historico(maria.getId())) {
             System.out.println("    - " + registro);

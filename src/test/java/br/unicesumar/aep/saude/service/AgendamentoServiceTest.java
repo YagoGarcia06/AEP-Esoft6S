@@ -3,6 +3,7 @@ package br.unicesumar.aep.saude.service;
 import br.unicesumar.aep.saude.exception.RecursoNaoEncontradoException;
 import br.unicesumar.aep.saude.exception.RegraNegocioException;
 import br.unicesumar.aep.saude.model.Agendamento;
+import br.unicesumar.aep.saude.model.AlteracaoAgendamento;
 import br.unicesumar.aep.saude.model.Contato;
 import br.unicesumar.aep.saude.model.Disponibilidade;
 import br.unicesumar.aep.saude.model.Endereco;
@@ -162,7 +163,7 @@ class AgendamentoServiceTest {
         Agendamento consulta = service.agendar(
                 maria.getId(), carlos.getId(), PROXIMA_SEGUNDA_9H, TipoAtendimento.CONSULTA);
 
-        service.cancelar(consulta.getId());
+        service.cancelar(consulta.getId(), "Paciente desistiu");
         assertEquals(StatusAgendamento.CANCELADO, service.buscarPorId(consulta.getId()).getStatus());
 
         service.agendar(maria.getId(), carlos.getId(), PROXIMA_SEGUNDA_9H, TipoAtendimento.CONSULTA);
@@ -173,7 +174,8 @@ class AgendamentoServiceTest {
     @DisplayName("falha ao operar agendamento inexistente")
     void deveFalharComAgendamentoInexistente() {
         assertThrows(RecursoNaoEncontradoException.class, () -> service.buscarPorId("inexistente"));
-        assertThrows(RecursoNaoEncontradoException.class, () -> service.cancelar("inexistente"));
+        assertThrows(RecursoNaoEncontradoException.class,
+                () -> service.cancelar("inexistente", "Paciente desistiu"));
         assertThrows(RecursoNaoEncontradoException.class,
                 () -> service.realizar("inexistente", "Descrição", null));
     }
@@ -312,7 +314,7 @@ class AgendamentoServiceTest {
     @DisplayName("não remarca atendimento já encerrado")
     void naoDeveRemarcarEncerrado() {
         Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
-        service.cancelar(consulta.getId());
+        service.cancelar(consulta.getId(), "Paciente desistiu");
 
         assertThrows(RegraNegocioException.class,
                 () -> service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.plusDays(7)));
@@ -340,5 +342,44 @@ class AgendamentoServiceTest {
         assertEquals(StatusAgendamento.NAO_COMPARECEU, service.buscarPorId(consulta.getId()).getStatus());
         assertTrue(service.agendaDoPaciente(maria.getId()).stream()
                 .noneMatch(a -> a.getStatus().isAtivo()));
+    }
+
+    @Test
+    @DisplayName("registra cada mudança do agendamento com o horário do relógio")
+    void deveRegistrarAlteracoes() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        assertTrue(consulta.getAlteracoes().isEmpty());
+
+        service.confirmar(consulta.getId());
+        service.remarcar(consulta.getId(), PROXIMA_SEGUNDA_9H.plusHours(1));
+        service.cancelar(consulta.getId(), "Paciente viajou");
+
+        List<AlteracaoAgendamento> alteracoes = service.buscarPorId(consulta.getId()).getAlteracoes();
+        assertEquals(3, alteracoes.size());
+
+        assertEquals(StatusAgendamento.AGENDADO, alteracoes.get(0).getStatusAnterior());
+        assertEquals(StatusAgendamento.CONFIRMADO, alteracoes.get(0).getStatusNovo());
+        assertEquals(AGORA, alteracoes.get(0).getMomento());
+
+        assertEquals(StatusAgendamento.CONFIRMADO, alteracoes.get(1).getStatusAnterior());
+        assertEquals(StatusAgendamento.AGENDADO, alteracoes.get(1).getStatusNovo());
+        assertEquals("Remarcado de 09/03/2026 09:00 para 09/03/2026 10:00",
+                alteracoes.get(1).getObservacao());
+
+        assertEquals(StatusAgendamento.CANCELADO, alteracoes.get(2).getStatusNovo());
+        assertEquals("Motivo: Paciente viajou", alteracoes.get(2).getObservacao());
+    }
+
+    @Test
+    @DisplayName("exige motivo para cancelar")
+    void deveExigirMotivoParaCancelar() {
+        Agendamento consulta = agendarConsulta(PROXIMA_SEGUNDA_9H);
+
+        assertThrows(RegraNegocioException.class, () -> service.cancelar(consulta.getId(), " "));
+        assertThrows(RegraNegocioException.class, () -> service.cancelar(consulta.getId(), null));
+
+        Agendamento inalterado = service.buscarPorId(consulta.getId());
+        assertEquals(StatusAgendamento.AGENDADO, inalterado.getStatus());
+        assertTrue(inalterado.getAlteracoes().isEmpty());
     }
 }
