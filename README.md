@@ -1,5 +1,7 @@
 # PoC — Agendamento de Consultas e Exames com Histórico do Paciente
 
+[![CI](https://github.com/YagoGarcia06/AEP-Esoft6S/actions/workflows/ci.yml/badge.svg)](https://github.com/YagoGarcia06/AEP-Esoft6S/actions/workflows/ci.yml)
+
 Prova de Conceito da **AEP 2026.2 — 6S**, curso de Engenharia de Software (UniCesumar).
 
 ## Problema
@@ -132,7 +134,13 @@ mostra a URI e o nome do banco em uso.
 
 ## Evidência de cobertura
 
-O comando abaixo é a evidência reproduzível exigida pela AEP:
+A cada push e pull request, o **GitHub Actions** sobe um MongoDB 7, roda todos os testes
+(unidade e integração) e aplica a regra de 70%. O selo no topo deste README mostra o
+resultado da última execução; em cada execução, a aba *Summary* traz o total de testes e a
+cobertura, e o relatório completo do JaCoCo fica disponível para download em *Artifacts*.
+O workflow está em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+Localmente, o comando abaixo é a evidência reproduzível exigida pela AEP:
 
 ```bash
 ./mvnw clean verify
