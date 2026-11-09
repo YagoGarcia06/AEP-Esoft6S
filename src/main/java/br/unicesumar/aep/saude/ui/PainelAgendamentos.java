@@ -2,8 +2,10 @@ package br.unicesumar.aep.saude.ui;
 
 import br.unicesumar.aep.saude.model.Agendamento;
 import br.unicesumar.aep.saude.model.AlteracaoAgendamento;
+import br.unicesumar.aep.saude.model.FiltroAgenda;
 import br.unicesumar.aep.saude.model.Paciente;
 import br.unicesumar.aep.saude.model.Profissional;
+import br.unicesumar.aep.saude.model.StatusAgendamento;
 import br.unicesumar.aep.saude.model.TipoAtendimento;
 import br.unicesumar.aep.saude.service.AgendamentoService;
 import br.unicesumar.aep.saude.service.PacienteService;
@@ -12,12 +14,14 @@ import br.unicesumar.aep.saude.service.ProfissionalService;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -44,6 +48,13 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
             new JComboBox<>(TipoAtendimento.values());
     private final JTextField campoData = new JTextField(12);
     private final JTextField campoHora = new JTextField("09:00", 12);
+
+    private final JComboBox<ItemPessoa> filtroProfissional = new JComboBox<>();
+    private final JComboBox<Object> filtroStatus = new JComboBox<>();
+    private final JTextField filtroInicio = new JTextField(8);
+    private final JTextField filtroFim = new JTextField(8);
+    private final JLabel resultadoFiltro = new JLabel();
+    private transient FiltroAgenda filtroAtual = FiltroAgenda.TODOS;
 
     private final TabelaSimples tabela = new TabelaSimples(
             "Data e hora", "Paciente", "Profissional", "Tipo", "Duração", "Status");
@@ -84,6 +95,7 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
         JPanel painel = new JPanel(new BorderLayout(6, 6));
         painel.setBorder(BorderFactory.createTitledBorder("Agenda"));
         tabela.definirLarguras(130, 140, 140, 80, 70, 90);
+        painel.add(construirFiltros(), BorderLayout.NORTH);
         painel.add(new JScrollPane(tabela), BorderLayout.CENTER);
 
         JButton confirmar = new JButton("Confirmar");
@@ -115,6 +127,67 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
         rodape.add(alteracoes);
         painel.add(rodape, BorderLayout.SOUTH);
         return painel;
+    }
+
+    /** Barra de filtros acima da tabela: período, profissional e status. */
+    private JPanel construirFiltros() {
+        filtroStatus.addItem("Todos");
+        for (StatusAgendamento status : StatusAgendamento.values()) {
+            filtroStatus.addItem(status);
+        }
+
+        JButton filtrar = new JButton("Filtrar");
+        filtrar.addActionListener(e -> aplicarFiltro());
+        JButton limpar = new JButton("Limpar");
+        limpar.addActionListener(e -> limparFiltro());
+
+        JPanel linha1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        linha1.add(new JLabel("De (dd/MM/aaaa):"));
+        linha1.add(filtroInicio);
+        linha1.add(new JLabel("Até:"));
+        linha1.add(filtroFim);
+        linha1.add(new JLabel("Profissional:"));
+        linha1.add(filtroProfissional);
+
+        JPanel linha2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+        linha2.add(new JLabel("Status:"));
+        linha2.add(filtroStatus);
+        linha2.add(filtrar);
+        linha2.add(limpar);
+        linha2.add(resultadoFiltro);
+
+        JPanel barra = new JPanel(new GridLayout(2, 1));
+        barra.add(linha1);
+        barra.add(linha2);
+        return barra;
+    }
+
+    private void aplicarFiltro() {
+        try {
+            ItemPessoa profissional = (ItemPessoa) filtroProfissional.getSelectedItem();
+            Object status = filtroStatus.getSelectedItem();
+            filtroAtual = new FiltroAgenda(
+                    lerDataOpcional(filtroInicio, "De"),
+                    lerDataOpcional(filtroFim, "Até"),
+                    profissional == null ? null : profissional.getId(),
+                    status instanceof StatusAgendamento ? (StatusAgendamento) status : null);
+            recarregarTabela();
+        } catch (RuntimeException e) {
+            Mensagens.erro(this, e);
+        }
+    }
+
+    private void limparFiltro() {
+        filtroInicio.setText("");
+        filtroFim.setText("");
+        filtroProfissional.setSelectedItem(ItemPessoa.TODOS);
+        filtroStatus.setSelectedIndex(0);
+        filtroAtual = FiltroAgenda.TODOS;
+        recarregarTabela();
+    }
+
+    private static LocalDate lerDataOpcional(JTextField campo, String nome) {
+        return campo.getText().isBlank() ? null : Formatos.lerData(campo.getText(), nome);
     }
 
     private void agendar() {
@@ -272,18 +345,23 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
     private void recarregarCombos() {
         ItemPessoa pacienteAtual = (ItemPessoa) comboPaciente.getSelectedItem();
         ItemPessoa profissionalAtual = (ItemPessoa) comboProfissional.getSelectedItem();
+        ItemPessoa filtroAtualProfissional = (ItemPessoa) filtroProfissional.getSelectedItem();
 
         comboPaciente.removeAllItems();
         for (Paciente paciente : pacienteService.listar()) {
             comboPaciente.addItem(new ItemPessoa(paciente));
         }
         comboProfissional.removeAllItems();
+        filtroProfissional.removeAllItems();
+        filtroProfissional.addItem(ItemPessoa.TODOS);
         for (Profissional profissional : profissionalService.listar()) {
             comboProfissional.addItem(new ItemPessoa(profissional));
+            filtroProfissional.addItem(new ItemPessoa(profissional));
         }
 
         reselecionar(comboPaciente, pacienteAtual);
         reselecionar(comboProfissional, profissionalAtual);
+        reselecionar(filtroProfissional, filtroAtualProfissional);
     }
 
     private void reselecionar(JComboBox<ItemPessoa> combo, ItemPessoa anterior) {
@@ -291,7 +369,7 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
             return;
         }
         for (int i = 0; i < combo.getItemCount(); i++) {
-            if (combo.getItemAt(i).getId().equals(anterior.getId())) {
+            if (Objects.equals(combo.getItemAt(i).getId(), anterior.getId())) {
                 combo.setSelectedIndex(i);
                 return;
             }
@@ -304,7 +382,11 @@ public class PainelAgendamentos extends JPanel implements PainelAtualizavel {
         profissionalService.listar().forEach(p -> nomes.put(p.getId(), p.getNome()));
 
         tabela.limpar();
-        for (Agendamento agendamento : agendamentoService.listarTodos()) {
+        List<Agendamento> agendamentos = agendamentoService.filtrar(filtroAtual);
+        resultadoFiltro.setText(filtroAtual.isVazio()
+                ? agendamentos.size() + " atendimento(s)"
+                : agendamentos.size() + " atendimento(s) no filtro");
+        for (Agendamento agendamento : agendamentos) {
             tabela.adicionarLinha(agendamento.getId(),
                     agendamento.getDataHora().format(Formatos.DATA_HORA),
                     nomes.getOrDefault(agendamento.getPacienteId(), "(removido)"),

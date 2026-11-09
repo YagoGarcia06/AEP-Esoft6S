@@ -1,11 +1,13 @@
 package br.unicesumar.aep.saude.repository.memory;
 
 import br.unicesumar.aep.saude.model.Agendamento;
+import br.unicesumar.aep.saude.model.FiltroAgenda;
 import br.unicesumar.aep.saude.repository.AgendamentoRepository;
 
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 public class InMemoryAgendamentoRepository extends InMemoryRepository<Agendamento>
@@ -35,6 +37,15 @@ public class InMemoryAgendamentoRepository extends InMemoryRepository<Agendament
         }
         return dados.values().stream()
                 .filter(a -> a.getPacienteId().equals(pacienteId))
+                .sorted(Comparator.comparing(Agendamento::getDataHora))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<Agendamento> buscarComFiltro(FiltroAgenda filtro) {
+        Objects.requireNonNull(filtro, "Filtro é obrigatório.");
+        return dados.values().stream()
+                .filter(filtro::aceita)
                 .sorted(Comparator.comparing(Agendamento::getDataHora))
                 .collect(Collectors.toList());
     }
