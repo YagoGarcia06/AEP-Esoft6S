@@ -7,6 +7,7 @@ import br.unicesumar.aep.saude.model.AlteracaoAgendamento;
 import br.unicesumar.aep.saude.model.Contato;
 import br.unicesumar.aep.saude.model.Disponibilidade;
 import br.unicesumar.aep.saude.model.Endereco;
+import br.unicesumar.aep.saude.model.FiltroAgenda;
 import br.unicesumar.aep.saude.model.Paciente;
 import br.unicesumar.aep.saude.model.Profissional;
 import br.unicesumar.aep.saude.model.StatusAgendamento;
@@ -381,5 +382,31 @@ class AgendamentoServiceTest {
         Agendamento inalterado = service.buscarPorId(consulta.getId());
         assertEquals(StatusAgendamento.AGENDADO, inalterado.getStatus());
         assertTrue(inalterado.getAlteracoes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("filtra a agenda por profissional, período e status")
+    void deveFiltrarAgenda() {
+        Profissional ana = new Profissional("Dra. Ana Prado", "615.406.180-73", "CRM-PR 54321",
+                new Contato("ana@clinica.com", "44 92222-2222"));
+        ana.adicionarDisponibilidade(
+                new Disponibilidade(DayOfWeek.MONDAY, LocalTime.of(8, 0), LocalTime.of(12, 0)));
+        profissionais.salvar(ana);
+
+        Agendamento primeira = agendarConsulta(PROXIMA_SEGUNDA_9H);
+        agendarConsulta(PROXIMA_SEGUNDA_9H.plusDays(7));
+        service.agendar(maria.getId(), ana.getId(), PROXIMA_SEGUNDA_9H, TipoAtendimento.EXAME);
+        service.confirmar(primeira.getId());
+
+        LocalDate dia = PROXIMA_SEGUNDA_9H.toLocalDate();
+        assertEquals(3, service.filtrar(FiltroAgenda.TODOS).size());
+        assertEquals(2, service.filtrar(new FiltroAgenda(dia, dia, null, null)).size());
+        assertEquals(2, service.filtrar(new FiltroAgenda(null, null, carlos.getId(), null)).size());
+
+        List<Agendamento> confirmados = service.filtrar(
+                new FiltroAgenda(dia, dia, carlos.getId(), StatusAgendamento.CONFIRMADO));
+        assertEquals(1, confirmados.size());
+        assertEquals(primeira.getId(), confirmados.get(0).getId());
+        assertThrows(NullPointerException.class, () -> service.filtrar(null));
     }
 }

@@ -1,6 +1,7 @@
 package br.unicesumar.aep.saude.repository;
 
 import br.unicesumar.aep.saude.model.Agendamento;
+import br.unicesumar.aep.saude.model.FiltroAgenda;
 import br.unicesumar.aep.saude.model.Contato;
 import br.unicesumar.aep.saude.model.Disponibilidade;
 import br.unicesumar.aep.saude.model.Endereco;
@@ -150,5 +151,23 @@ class InMemoryRepositoriesTest {
         assertEquals(2, agenda.size());
         assertEquals(LocalDate.of(2026, 3, 9), agenda.get(0).getData());
         assertTrue(agendamentos.buscarPorPaciente(null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("aplica o filtro da agenda em ordem cronológica")
+    void deveBuscarComFiltro() {
+        agendamentos.salvar(new Agendamento("pac-1", "prof-1",
+                LocalDateTime.of(2026, 3, 16, 9, 0), TipoAtendimento.CONSULTA));
+        agendamentos.salvar(new Agendamento("pac-1", "prof-1",
+                LocalDateTime.of(2026, 3, 9, 9, 0), TipoAtendimento.CONSULTA));
+        agendamentos.salvar(new Agendamento("pac-2", "prof-2",
+                LocalDateTime.of(2026, 3, 9, 11, 0), TipoAtendimento.EXAME));
+
+        List<Agendamento> doProf1 = agendamentos.buscarComFiltro(new FiltroAgenda(null, null, "prof-1", null));
+
+        assertEquals(2, doProf1.size());
+        assertEquals(LocalDate.of(2026, 3, 9), doProf1.get(0).getData());
+        assertEquals(3, agendamentos.buscarComFiltro(FiltroAgenda.TODOS).size());
+        assertThrows(NullPointerException.class, () -> agendamentos.buscarComFiltro(null));
     }
 }

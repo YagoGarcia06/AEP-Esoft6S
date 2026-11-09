@@ -3,6 +3,7 @@ package br.unicesumar.aep.saude.service;
 import br.unicesumar.aep.saude.exception.RecursoNaoEncontradoException;
 import br.unicesumar.aep.saude.exception.RegraNegocioException;
 import br.unicesumar.aep.saude.model.Agendamento;
+import br.unicesumar.aep.saude.model.FiltroAgenda;
 import br.unicesumar.aep.saude.model.Paciente;
 import br.unicesumar.aep.saude.model.Profissional;
 import br.unicesumar.aep.saude.model.RegistroClinico;
@@ -176,6 +177,12 @@ public class AgendamentoService {
 
     public List<Agendamento> agendaDoPaciente(String pacienteId) {
         return agendamentoRepository.buscarPorPaciente(pacienteId);
+    }
+
+    /** Agendamentos que atendem ao filtro, em ordem de data e hora. */
+    public List<Agendamento> filtrar(FiltroAgenda filtro) {
+        Objects.requireNonNull(filtro, "Filtro é obrigatório.");
+        return agendamentoRepository.buscarComFiltro(filtro);
     }
 
     /** Todos os agendamentos, do mais próximo para o mais distante. */

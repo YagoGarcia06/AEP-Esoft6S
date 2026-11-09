@@ -7,12 +7,19 @@ import br.unicesumar.aep.saude.model.Pessoa;
  */
 public class ItemPessoa {
 
+    /** Opção "Todos" dos filtros: não tem id. */
+    public static final ItemPessoa TODOS = new ItemPessoa(null, "Todos");
+
     private final String id;
     private final String nome;
 
     public ItemPessoa(Pessoa pessoa) {
-        this.id = pessoa.getId();
-        this.nome = pessoa.getNome();
+        this(pessoa.getId(), pessoa.getNome());
+    }
+
+    private ItemPessoa(String id, String nome) {
+        this.id = id;
+        this.nome = nome;
     }
 
     public String getId() {
