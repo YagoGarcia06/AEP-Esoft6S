@@ -4,6 +4,16 @@
 
 Prova de Conceito da **AEP 2026.2 — 6S**, curso de Engenharia de Software (UniCesumar).
 
+## Documentação
+
+| Documento | Conteúdo |
+|---|---|
+| [docs/arquitetura.md](docs/arquitetura.md) | Camadas, diagrama de classes, ciclo de vida do agendamento, regras de negócio e decisões de projeto |
+| [docs/banco-de-dados.md](docs/banco-de-dados.md) | Coleções, documentos de exemplo, relacionamentos, índices e pipelines de agregação |
+| [docs/testes.md](docs/testes.md) | Estratégia de testes, como rodar, testes de integração e cobertura |
+| [docs/processo.md](docs/processo.md) | Metodologia (Kanban), quadro de tarefas, fluxo de branches e PRs, CI |
+| [CHANGELOG.md](CHANGELOG.md) | O que mudou da 1ª para a 2ª entrega |
+
 ## Problema
 
 Clínicas e unidades de saúde de pequeno porte ainda organizam a agenda em papel ou
@@ -21,7 +31,10 @@ próprio, onde a agenda é controlada manualmente pela recepção.
 
 **ODS 3 — Saúde e Bem-Estar.** A PoC contribui para a meta de acesso a serviços de saúde
 de qualidade ao reduzir falhas de agendamento e garantir que o histórico clínico do
-paciente esteja disponível e íntegro no momento do atendimento.
+paciente esteja disponível e íntegro no momento do atendimento. Na 2ª entrega, a
+confirmação de presença, o registro de faltas e o relatório de **% de faltas** por
+profissional ajudam a clínica a enxergar e reduzir o absenteísmo, que desperdiça horários
+de atendimento.
 
 ## Tecnologias
 
@@ -31,8 +44,11 @@ paciente esteja disponível e íntegro no momento do atendimento.
 | Interface | Swing (incluída no JDK, sem dependência externa) |
 | Build | Maven |
 | Banco de dados | MongoDB (driver oficial `mongodb-driver-sync`) |
-| Testes | JUnit 5 |
+| Testes | JUnit 5 (unidade + integração com MongoDB real) |
 | Cobertura | JaCoCo, mínimo obrigatório de 70% |
+| CI | GitHub Actions, com MongoDB 7 como serviço |
+| Qualidade | SonarCloud (análise estática e Quality Gate em cada PR) |
+| Processo | Kanban no GitHub Projects, issues e pull requests |
 
 ## Persistência
 
@@ -43,8 +59,9 @@ por trás da mesma interface:
 - `repository/memory` — usada nos testes e como alternativa de execução.
 
 Como os serviços dependem apenas das interfaces `PacienteRepository`,
-`ProfissionalRepository` e `AgendamentoRepository`, trocar o mecanismo não altera
-nenhuma regra de negócio nem a interface gráfica.
+`ProfissionalRepository`, `AgendamentoRepository` e `RelatorioRepository`, trocar o
+mecanismo não altera nenhuma regra de negócio nem a interface gráfica. Detalhes em
+[docs/arquitetura.md](docs/arquitetura.md).
 
 ### Configuração da conexão
 
@@ -126,8 +143,9 @@ demonstrar todos os fluxos sem digitar nada.
 |---|---|
 | ![Pacientes](docs/telas/01-pacientes.png) | Cadastro de pacientes com validação de CPF, e-mail e endereço |
 | ![Profissionais](docs/telas/02-profissionais.png) | Cadastro de profissionais, especialidades e janelas de atendimento |
-| ![Agendamentos](docs/telas/03-agendamentos.png) | Agendamento com bloqueio de conflito, data passada e horário indisponível |
+| ![Agendamentos](docs/telas/03-agendamentos.png) | Agendamento com bloqueio de conflito, data passada e horário indisponível; confirmar, remarcar, concluir, registrar falta, cancelar com motivo; filtros por período, profissional e status |
 | ![Histórico](docs/telas/04-historico.png) | Histórico clínico consolidado do paciente |
+| ![Relatórios](docs/telas/05-relatorios.png) | Agenda do dia (`$lookup`) e resumo de atendimentos por profissional ou tipo (`$group`), com % de faltas |
 
 As capturas acima foram feitas em modo memória; com o MongoDB conectado, o cabeçalho
 mostra a URI e o nome do banco em uso.
@@ -184,127 +202,47 @@ só os de integração: `./mvnw test -Dgroups=integracao`.
 
 ## Modelagem NoSQL
 
-Três coleções, atendendo aos requisitos de múltiplas coleções, relacionamento entre elas
-e pelo menos uma com objetos complexos.
+Três coleções — `pacientes`, `profissionais` e `agendamentos` — relacionadas por
+referência de id (`pacienteId`, `profissionalId`), com objetos complexos nas três:
+documentos aninhados (`contato`, `endereco`) e listas de subdocumentos (`historico`,
+`disponibilidades`, `alteracoes`). Os relatórios usam o aggregation pipeline (`$lookup`,
+`$group`).
 
-### `pacientes`
-
-Contém objetos complexos: `contato` e `endereco` são documentos aninhados e `historico`
-é uma lista de subdocumentos.
-
-```json
-{
-  "_id": "9f2c...-uuid",
-  "nome": "Maria Souza",
-  "cpf": "52998224725",
-  "dataNascimento": "1990-04-12",
-  "contato": { "email": "maria@email.com", "telefone": "44 90000-0000" },
-  "endereco": { "rua": "Rua A, 100", "cidade": "Maringá", "estado": "PR" },
-  "historico": [
-    {
-      "data": "2026-03-09",
-      "tipo": "CONSULTA",
-      "profissionalId": "5a1b...-uuid",
-      "descricao": "Consulta de rotina em cardiologia",
-      "prescricoes": ["Losartana 50mg - 1x ao dia"]
-    }
-  ]
-}
-```
-
-### `profissionais`
-
-```json
-{
-  "_id": "5a1b...-uuid",
-  "nome": "Dr. Carlos Lima",
-  "cpf": "11144477735",
-  "registroProfissional": "CRM-PR 12345",
-  "contato": { "email": "carlos@clinica.com", "telefone": "44 91111-1111" },
-  "especialidades": ["Cardiologia"],
-  "disponibilidades": [
-    { "diaSemana": "MONDAY", "horaInicio": "08:00", "horaFim": "12:00" }
-  ]
-}
-```
-
-### `agendamentos`
-
-Relaciona as duas coleções anteriores por referência de id.
-
-```json
-{
-  "_id": "c7d4...-uuid",
-  "pacienteId": "9f2c...-uuid",
-  "profissionalId": "5a1b...-uuid",
-  "dataHora": "2026-03-09T09:00",
-  "data": "2026-03-09",
-  "duracaoMinutos": 30,
-  "tipo": "CONSULTA",
-  "status": "REALIZADO"
-}
-```
-
-O campo `data` é derivado de `dataHora` e guarda apenas o dia. Ele existe para que a
-consulta de agenda por profissional e data seja uma igualdade indexável, em vez de uma
-varredura por intervalo de texto.
-
-### Índices criados
-
-| Coleção | Índice | Motivo |
-|---|---|---|
-| `pacientes` | `cpf` (único) | Garante no banco a mesma regra de CPF único aplicada no serviço |
-| `agendamentos` | `profissionalId + data` | Consulta da agenda do dia, usada na checagem de conflito |
-| `agendamentos` | `pacienteId` | Histórico de atendimentos do paciente |
+Documentos de exemplo, índices, a justificativa de embutir ou referenciar cada dado e os
+pipelines completos estão em [docs/banco-de-dados.md](docs/banco-de-dados.md).
 
 ## Estrutura do projeto
 
 ```
 src/main/java/br/unicesumar/aep/saude/
-├── model/        Domínio: Pessoa (abstrata) → Paciente, Profissional;
-│                 Agendamento, RegistroClinico, Endereco, Contato,
-│                 Disponibilidade, TipoAtendimento, StatusAgendamento
-├── repository/   Repository<T> genérica + contratos por entidade
+├── model/        Domínio: Pessoa (abstrata) → Paciente, Profissional; Agendamento,
+│                 AlteracaoAgendamento, RegistroClinico, FiltroAgenda, objetos de valor e enums
+├── repository/   Repository<T>, contratos por entidade e RelatorioRepository
 │   ├── memory/   Implementações em memória (testes e modo sem banco)
-│   └── mongo/    Implementações MongoDB usadas pela aplicação
+│   └── mongo/    Implementações MongoDB e pipelines de agregação
 ├── mapper/       Conversão entre entidades e documentos BSON
 ├── infra/        MongoConnection e ContextoAplicacao (montagem das dependências)
-├── service/      PacienteService, ProfissionalService, AgendamentoService
-│                 (regras de negócio)
+├── service/      Paciente, Profissional, Agendamento e Relatorio (regras de negócio)
 ├── exception/    RegraNegocioException, RecursoNaoEncontradoException
 ├── ui/           Interface Swing: JanelaPrincipal + uma aba por fluxo
 └── app/          Main (ponto de entrada) e DemoConsole (modo texto)
+
+src/test/java/br/unicesumar/aep/saude/
+├── ...           Testes de unidade, espelhando os pacotes acima
+└── integracao/   Testes contra MongoDB real
+
+docs/             Documentação técnica e capturas de tela
+.github/workflows CI (GitHub Actions)
 ```
 
-## Regras de negócio implementadas
-
-- CPF é normalizado e validado; não se cadastram dois pacientes com o mesmo CPF.
-- Não se agenda em data/hora no passado.
-- Só se agenda dentro de uma janela de disponibilidade do profissional, e o atendimento
-  precisa caber inteiro na janela.
-- Dois atendimentos ativos do mesmo profissional não podem se sobrepor. Horários apenas
-  encostados (09:00–09:30 e 09:30–10:00) são permitidos.
-- Cancelar um atendimento libera o horário.
-- Um atendimento só vai de AGENDADO para REALIZADO ou CANCELADO — nunca a partir de um
-  status final.
-- Concluir um atendimento grava automaticamente o registro no histórico do paciente.
-
-## Aplicação de POO
-
-- **Herança e polimorfismo:** `Pessoa` abstrata com `tipo()` implementado por `Paciente`
-  e `Profissional`; `Profissional` sobrescreve `descricaoResumida()`.
-- **Abstração:** `Repository<T>` tem duas implementações — memória e MongoDB — e trocar
-  uma pela outra não toca em nenhuma linha de serviço.
-- **Encapsulamento:** validação nos construtores, listas internas expostas somente leitura.
-- **Objetos de valor imutáveis:** `Contato`, `Endereco`, `Disponibilidade`, `RegistroClinico`.
-- **Responsabilidade única:** regra de negócio nos serviços, persistência nos repositórios,
-  apresentação na `ui`. Nenhuma aba conhece os repositórios: todas falam com os serviços.
-- **Reuso na interface:** `PainelFormulario` e `TabelaSimples` concentram o que seria
-  repetido em cada aba.
+As regras de negócio, o ciclo de vida do agendamento e a aplicação de POO estão em
+[docs/arquitetura.md](docs/arquitetura.md).
 
 ## Entregas
 
-| Entrega | Tag |
-|---|---|
-| Primeira entrega | `entrega-1` |
-| Segunda entrega | `entrega-2` |
+| Entrega | Versão | Commit |
+|---|---|---|
+| 1ª entrega | Release [`v1.0-entrega1`](https://github.com/YagoGarcia06/AEP-Esoft6S/releases/tag/v1.0-entrega1) | `5764b76` |
+| 2ª entrega | Release `v2.0-entrega2` | indicado na release |
+
+O que mudou entre as duas está no [CHANGELOG](CHANGELOG.md).
